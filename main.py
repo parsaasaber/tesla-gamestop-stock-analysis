@@ -6,7 +6,10 @@ import yfinance as yf
 from bs4 import BeautifulSoup
 import warnings
 
-warnings.filterwarnings('ignore')
+# Suppress library warnings (e.g. FutureWarning / DeprecationWarning from pandas
+# and yfinance saying a feature will be removed in newer versions). They don't
+# affect the results, but they clutter the terminal output.
+warnings.filterwarnings('ignore') #
 
 DATA_DIR = "data"
 CHARTS_DIR = "charts"
