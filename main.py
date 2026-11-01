@@ -1,13 +1,18 @@
-import yfinance as yf
+import os
+import matplotlib.pyplot as plt
 import pandas as pd
 import requests
+import yfinance as yf
 from bs4 import BeautifulSoup
 import warnings
-import matplotlib.pyplot as plt
-import os
 
-os.makedirs("data", exist_ok=True)
 warnings.filterwarnings('ignore')
+
+DATA_DIR = "data"
+CHARTS_DIR = "charts"
+
+TSLA_URL = "https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-PY0220EN-SkillsNetwork/labs/project/revenue.htm"
+GME_URL = "https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-PY0220EN-SkillsNetwork/labs/project/stock.html"
 
 
 def get_data(name):
@@ -20,28 +25,31 @@ def get_data(name):
 
 
 def get_rev(url):
-    response = requests.get(url).text
+    """
+    Scrapes the quarterly revenue table from the given URL and
+    returns a cleaned DataFrame with the columns Date and Revenue.
+    """
+    response = requests.get(url, timeout=30).text
     soup = BeautifulSoup(response, 'html.parser')
-    tables = soup.find_all('tbody')[1].find_all('tr')
-    revenue_data = pd.DataFrame(columns=['Date', 'Revenue'])
-    for row in tables:
+    rows = soup.find_all('tbody')[1].find_all('tr')
+
+    # Collect rows in a list first and build the DataFrame once (much faster
+    # than calling pd.concat inside the loop).
+    records = []
+    for row in rows:
         col = row.find_all('td')
-        date = col[0].text
-        revenue = col[1].text
-        revenue_data = pd.concat([
-            revenue_data,
-            pd.DataFrame({
-                "Date": [date],
-                "Revenue": [revenue]
-            })
-        ], ignore_index=True)
+        records.append({"Date": col[0].text, "Revenue": col[1].text})
+
+    revenue_data = pd.DataFrame(records, columns=['Date', 'Revenue'])
     revenue_data["Revenue"] = revenue_data['Revenue'].str.replace(',|\\$', "", regex=True)
     revenue_data.dropna(inplace=True)
     revenue_data = revenue_data[revenue_data['Revenue'] != ""]
     return revenue_data
 
 
-# The make_graph function has been modified to use Matplotlib for static graphs. Earlier, it used Plotly to generate interactive dashboards, which caused issues when uploading the notebook in the MARK assignment submission.
+# make_graph uses Matplotlib for static graphs. Earlier it used Plotly to generate
+# interactive dashboards, which caused issues when uploading the notebook in the
+# MARK assignment submission.
 def make_graph(stock_data, revenue_data, stock):
     stock_data_specific = stock_data[stock_data.Date <= '2021-06-14']
     revenue_data_specific = revenue_data[revenue_data.Date <= '2021-04-30']
@@ -62,22 +70,39 @@ def make_graph(stock_data, revenue_data, stock):
     axes[1].set_title(f"{stock} - Historical Revenue")
 
     plt.tight_layout()
+
+    # Save the chart so it can be used in the README, then display it.
+    os.makedirs(CHARTS_DIR, exist_ok=True)
+    fig.savefig(os.path.join(CHARTS_DIR, f"{stock.lower()}_price_vs_revenue.png"), dpi=150)
     plt.show()
 
 
-TSLA_URL = "https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-PY0220EN-SkillsNetwork/labs/project/revenue.htm"
-GME_URL = "https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-PY0220EN-SkillsNetwork/labs/project/stock.html"
+def save_data(frames):
+    """
+    Saves each DataFrame in the dict {filename: DataFrame} as a CSV in DATA_DIR.
+    """
+    os.makedirs(DATA_DIR, exist_ok=True)
+    for filename, df in frames.items():
+        df.to_csv(os.path.join(DATA_DIR, filename), index=False)
 
-tesla_data = get_data("TSLA")
-tesla_rev = get_rev(TSLA_URL)
 
-gme_data = get_data('GME')
-gme_rev = get_rev(GME_URL)
+def main():
+    tesla_data = get_data("TSLA")
+    tesla_rev = get_rev(TSLA_URL)
 
-tesla_data.to_csv("data/tesla_stock.csv", index=False)
-tesla_rev.to_csv("data/tesla_revenue.csv", index=False)
-gme_data.to_csv("data/gme_stock.csv", index=False)
-gme_rev.to_csv("data/gme_revenue.csv", index=False)
+    gme_data = get_data("GME")
+    gme_rev = get_rev(GME_URL)
 
-# make_graph(tesla_data, tesla_rev, 'TESLA')
-# make_graph(gme_data, gme_rev, 'GameStop')
+    save_data({
+        "tesla_stock.csv": tesla_data,
+        "tesla_revenue.csv": tesla_rev,
+        "gme_stock.csv": gme_data,
+        "gme_revenue.csv": gme_rev,
+    })
+
+    make_graph(tesla_data, tesla_rev, "Tesla")
+    make_graph(gme_data, gme_rev, "GameStop")
+
+
+if __name__ == "__main__":
+    main()
